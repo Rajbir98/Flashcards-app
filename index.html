@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gruvbox Flashcards</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- PapaParse for CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <!-- Marked for Markdown -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+
+    <!-- Highlight.js for Syntax Highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/gruvbox-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        gruv: {
+                            bg: '#282828',
+                            bgH: '#1d2021',
+                            fg: '#ebdbb2',
+                            gray: '#928374',
+                            red: '#cc241d',
+                            green: '#98971a',
+                            yellow: '#d79921',
+                            blue: '#458588',
+                            purple: '#b16286',
+                            aqua: '#689d6a',
+                            orange: '#d65d0e',
+                            card: '#3c3836',
+                            cardH: '#504945'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Fira+Code:wght@400;600&display=swap');
+
+        body {
+            background-color: #282828;
+            color: #ebdbb2;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Prevent body scroll, handle inside app */
+        }
+
+        /* 3D Flip Styles */
+        .perspective-1000 {
+            perspective: 1000px;
+        }
+        
+        .transform-style-3d {
+            transform-style: preserve-3d;
+        }
+        
+        .backface-hidden {
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+        }
+        
+        .rotate-y-180 {
+            transform: rotateY(180deg);
+        }
+
+        /* Scrollbar styling for inside cards */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #282828; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #504945; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #665c54; 
+        }
+
+        /* Markdown Content Styles */
+        .markdown-content code {
+            font-family: 'Fira Code', monospace;
+            background-color: #1d2021;
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        .markdown-content pre {
+            background-color: #1d2021;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+            border: 1px solid #504945;
+        }
+
+        .markdown-content pre code {
+            background-color: transparent;
+            padding: 0;
+            font-size: 0.85em; /* Slightly smaller for blocks */
+        }
+
+        .markdown-content p {
+            margin-bottom: 0.75rem;
+        }
+        .markdown-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Hide file input */
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // --- Icons ---
+        const UploadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>;
+        const ChevronLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>;
+        const ChevronRight = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>;
+        const RefreshCw = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>;
+        const ShuffleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l14.2-12.6c.8-1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.4c1.3 0 2.5.6 3.3 1.7l14.2 12.6c.8 1 2 1.7 3.3 1.7H22"/><path d="m18 22 4-4-4-4"/></svg>;
+
+        // --- Utils ---
+        // Basic Markdown parser configuration
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return hljs.highlightAuto(code).value;
+            },
+            breaks: true // Interpret newlines as <br>
+        });
+
+        const MarkdownRenderer = ({ content, className }) => {
+            const htmlContent = useMemo(() => {
+                try {
+                    return marked.parse(content || "");
+                } catch (e) {
+                    return content;
+                }
+            }, [content]);
+
+            return (
+                <div 
+                    className={`markdown-content ${className}`}
+                    dangerouslySetInnerHTML={{ __html: htmlContent }} 
+                />
+            );
+        };
+
+        const App = () => {
+            const [cards, setCards] = useState([]);
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [isFlipped, setIsFlipped] = useState(false);
+            const [fileName, setFileName] = useState("");
+            const [isLoading, setIsLoading] = useState(false);
+
+            // Logic to calculate font size based on text length
+            const getFontSizeClass = (text) => {
+                const len = text ? text.length : 0;
+                // If there's a code block (```), force slightly smaller text immediately
+                const hasCode = text && text.includes("```");
+                
+                if (hasCode) {
+                    if (len < 100) return "text-lg";
+                    if (len < 300) return "text-base";
+                    return "text-sm";
+                }
+
+                if (len < 50) return "text-3xl md:text-4xl font-bold text-center";
+                if (len < 150) return "text-xl md:text-2xl font-semibold";
+                if (len < 300) return "text-lg md:text-xl";
+                if (len < 600) return "text-base md:text-lg";
+                return "text-sm md:text-base";
+            };
+
+            const handleFileUpload = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                setFileName(file.name);
+                setIsLoading(true);
+
+                Papa.parse(file, {
+                    complete: (results) => {
+                        // Assumption: CSV is Headerless or Headered.
+                        // Strategy: Look at first row. If > 1 columns, mapping col 1 to front, col 2 to back.
+                        let parsedCards = [];
+                        const data = results.data;
+
+                        // Clean data (remove empty rows)
+                        const cleanData = data.filter(row => {
+                            if (Array.isArray(row)) return row.length >= 2 && (row[0] || row[1]);
+                            return Object.keys(row).length >= 2;
+                        });
+
+                        parsedCards = cleanData.map(row => {
+                            // If parsed as array (no header detection or headerless)
+                            if (Array.isArray(row)) {
+                                return { front: row[0], back: row[1] };
+                            }
+                            // If parsed as object (headers detected), grab first two keys
+                            const keys = Object.keys(row);
+                            return { front: row[keys[0]], back: row[keys[1]] };
+                        });
+
+                        setCards(parsedCards);
+                        setCurrentIndex(0);
+                        setIsFlipped(false);
+                        setIsLoading(false);
+                    },
+                    error: (err) => {
+                        alert("Error parsing CSV: " + err.message);
+                        setIsLoading(false);
+                    },
+                    header: false, // Force array mode to be safe with unknown headers
+                    skipEmptyLines: true
+                });
+            };
+
+            const handleNext = () => {
+                if (currentIndex < cards.length - 1) {
+                    setIsFlipped(false);
+                    setTimeout(() => setCurrentIndex(c => c + 1), 150);
+                }
+            };
+
+            const handlePrev = () => {
+                if (currentIndex > 0) {
+                    setIsFlipped(false);
+                    setTimeout(() => setCurrentIndex(c => c - 1), 150);
+                }
+            };
+
+            const handleFlip = () => {
+                setIsFlipped(!isFlipped);
+            };
+
+            const handleShuffle = () => {
+                const shuffled = [...cards].sort(() => Math.random() - 0.5);
+                setCards(shuffled);
+                setCurrentIndex(0);
+                setIsFlipped(false);
+            };
+
+            const handleReset = () => {
+                setCards([]);
+                setFileName("");
+                setCurrentIndex(0);
+                setIsFlipped(false);
+            };
+
+            // Keyboard navigation
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (cards.length === 0) return;
+                    
+                    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+                        e.preventDefault();
+                        handleFlip();
+                    } else if (e.code === 'ArrowRight') {
+                        handleNext();
+                    } else if (e.code === 'ArrowLeft') {
+                        handlePrev();
+                    }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [cards, currentIndex, isFlipped]);
+
+            // Ensure syntax highlighting runs on render
+            useEffect(() => {
+                hljs.highlightAll();
+            }, [currentIndex, isFlipped, cards]);
+
+
+            // --- Render: Empty State / Upload ---
+            if (cards.length === 0) {
+                return (
+                    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+                        <div className="max-w-md w-full bg-gruv-card border-2 border-gruv-gray rounded-xl p-10 shadow-2xl">
+                            <h1 className="text-4xl font-bold text-gruv-green mb-4">Gruvbox Flashcards</h1>
+                            <p className="text-gruv-fg opacity-80 mb-8">
+                                Upload a CSV file to generate flashcards instantly. 
+                                Format: Column 1 (Front), Column 2 (Back).
+                            </p>
+                            
+                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gruv-blue border-dashed rounded-lg cursor-pointer hover:bg-gruv-cardH transition-colors">
+                                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                    <UploadIcon />
+                                    <p className="mb-2 text-sm text-gruv-fg mt-2"><span className="font-semibold">Click to upload</span> CSV</p>
+                                </div>
+                                <input type="file" accept=".csv" onChange={handleFileUpload} />
+                            </label>
+                            
+                            {isLoading && <p className="mt-4 text-gruv-yellow animate-pulse">Parsing CSV...</p>}
+
+                            <div className="mt-8 text-xs text-gruv-gray">
+                                Supports Markdown syntax & SQL/Python code blocks.
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            const currentCard = cards[currentIndex];
+
+            return (
+                <div className="min-h-screen flex flex-col items-center justify-between p-4 md:p-8 max-h-screen">
+                    {/* Header */}
+                    <div className="w-full max-w-4xl flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2">
+                             <h2 className="text-gruv-blue font-bold text-lg hidden md:block truncate max-w-[200px]">{fileName}</h2>
+                             <span className="text-xs px-2 py-1 bg-gruv-bgH rounded border border-gruv-gray">
+                                 {currentIndex + 1} / {cards.length}
+                             </span>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={handleShuffle} title="Shuffle" className="p-2 hover:bg-gruv-cardH rounded-full text-gruv-purple transition-colors">
+                                <ShuffleIcon />
+                            </button>
+                            <button onClick={handleReset} title="Upload New" className="p-2 hover:bg-gruv-cardH rounded-full text-gruv-red transition-colors">
+                                <UploadIcon />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Card Container */}
+                    <div className="perspective-1000 w-full max-w-4xl flex-grow flex flex-col justify-center mb-4 min-h-0 relative">
+                        <div 
+                            className={`relative w-full h-full transform-style-3d transition-transform duration-500 ease-in-out cursor-pointer ${isFlipped ? 'rotate-y-180' : ''}`}
+                            onClick={handleFlip}
+                            style={{ minHeight: '400px', maxHeight: '70vh' }}
+                        >
+                            {/* Front */}
+                            <div className="absolute w-full h-full backface-hidden bg-gruv-card border border-gruv-gray rounded-2xl shadow-xl flex flex-col p-8 overflow-y-auto">
+                                <div className="text-xs text-gruv-gray uppercase tracking-widest font-bold mb-4 border-b border-gruv-bgH pb-2">Question</div>
+                                <div className={`flex-grow flex items-center justify-center w-full`}>
+                                    <div className={`w-full ${getFontSizeClass(currentCard.front)}`}>
+                                        <MarkdownRenderer content={currentCard.front} />
+                                    </div>
+                                </div>
+                                <div className="mt-4 text-center text-xs text-gruv-gray opacity-50 flex items-center justify-center gap-2">
+                                    Click or Space to Flip
+                                </div>
+                            </div>
+
+                            {/* Back */}
+                            <div className="absolute w-full h-full backface-hidden rotate-y-180 bg-gruv-bgH border border-gruv-green rounded-2xl shadow-xl flex flex-col p-8 overflow-y-auto">
+                                <div className="text-xs text-gruv-green uppercase tracking-widest font-bold mb-4 border-b border-gruv-gray pb-2">Answer</div>
+                                <div className={`flex-grow flex items-center justify-center w-full`}>
+                                    <div className={`w-full ${getFontSizeClass(currentCard.back)}`}>
+                                        <MarkdownRenderer content={currentCard.back} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="w-full max-w-md flex items-center justify-between gap-4 mt-auto">
+                        <button 
+                            onClick={handlePrev} 
+                            disabled={currentIndex === 0}
+                            className={`p-4 rounded-full transition-all duration-200 flex items-center justify-center shadow-lg
+                                ${currentIndex === 0 
+                                    ? 'bg-gruv-bgH text-gruv-gray cursor-not-allowed opacity-50' 
+                                    : 'bg-gruv-card text-gruv-orange hover:bg-gruv-orange hover:text-gruv-bg hover:scale-105 active:scale-95'}`}
+                        >
+                            <ChevronLeft />
+                        </button>
+
+                        <button 
+                            onClick={handleFlip}
+                            className="flex-grow py-4 bg-gruv-blue text-gruv-bg font-bold rounded-xl shadow-lg hover:bg-gruv-aqua transition-all active:scale-95"
+                        >
+                            {isFlipped ? "Show Question" : "Reveal Answer"}
+                        </button>
+
+                        <button 
+                            onClick={handleNext} 
+                            disabled={currentIndex === cards.length - 1}
+                            className={`p-4 rounded-full transition-all duration-200 flex items-center justify-center shadow-lg
+                                ${currentIndex === cards.length - 1
+                                    ? 'bg-gruv-bgH text-gruv-gray cursor-not-allowed opacity-50' 
+                                    : 'bg-gruv-card text-gruv-green hover:bg-gruv-green hover:text-gruv-bg hover:scale-105 active:scale-95'}`}
+                        >
+                            <ChevronRight />
+                        </button>
+                    </div>
+
+                    <div className="mt-4 text-xs text-gruv-gray opacity-40">
+                        Keyboard: ← Prev | Space Flip | Next →
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
